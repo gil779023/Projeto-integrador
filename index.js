@@ -1,54 +1,89 @@
-const express = require ("express");
-const cadastro = require('./src/table');
-var  bodyParser  =  require ( 'body-parser' )
+const express = require('express');
 const app = express();
-//app.use(express.json());
-app.use(express.static('Public'))
+
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const { eAdmin } = require('./src/middlewares/auth');
+const User = require('./src/models/User');
+
+app.use(express.json());
 
 
-app.use(bodyParser.urlencoded({ extended: false }))
-app.use(bodyParser.json())
 
-app.get("/pulseira.html", (req, res) => {
-  res.sendFile(__dirname +('/pages/pulseira.html'))
+app.get('/', eAdmin, async (req, res) => {
+    await User.findAll({
+        attributes: ['id', 'name', 'email'],
+        order: [['id', "DESC"]]
+    })
+    .then((users) => {
+        return res.json({
+            erro: false,
+            users,
+            id_usuario_logado: req.userId
+        });
+    }).catch(() => {
+        return res.status(400).json({
+            erro: true,
+            mensagem: "Erro: Nenhum usuário encontrado!"
+        });
+    });    
 });
 
+app.post('/cadastrar', async (req, res) => {
+    var dados = req.body;
 
-app.get("/", (req, res) => {
-    res.sendFile(__dirname +('/pages/pagina.html'))
+    dados.password = await bcrypt.hash(dados.password, 8);
+
+    await User.create(dados)
+    .then(() => {
+        return res.json({
+            erro: false,
+            mensagem: "Usuário cadastrado com sucesso!"
+        });
+    }).catch(() => {
+        return res.status(400).json({
+            erro: true,
+            mensagem: "Erro: nenhum usuario cadastrado!"
+        });
+    });    
 });
 
-app.get("/formulario.html", (req, res) => {
-  res.sendFile(__dirname +('/pages/formulario.html'))
+app.post('/login', async (req, res) => {
+
+    const user = await User.findOne({
+        attributes: ['id', 'name', 'email', 'password'],
+        where: {
+            email: req.body.email
+        }
+    });
+
+    if(user === null){
+        return res.status(400).json({
+            erro: true,
+            mensagem: "Erro: Usuário ou a senha incorreta! Nenhum usuário com este e-mail"
+        });
+    }
+
+    if(!(await bcrypt.compare(req.body.password, user.password))){
+        return res.status(400).json({
+            erro: true,
+            mensagem: "Erro: Usuário ou a senha incorreta! Senha incorreta!"
+        });
+    }
+
+    var token = jwt.sign({id: user.id}, "D62ST92Y7A6V7K5C6W9ZU6W8KS3", {
+       
+        expiresIn: '7d' // 7 dia
+    });
+
+    return res.json({
+        erro: false,
+        mensagem: "Login realizado com sucesso!",
+        token
+    });
 });
 
-app.get("/home.html", (req, res) => {
-  res.sendFile(__dirname +('/pages/home.html'))
+app.listen(8000, () => {
+    console.log("Servidor rodando na porta 8000: http://localhost:8000");
 });
-
-app.post("/Cadastro", (req, res) => {
-    
-  
-    cadastro.create(
-      {nome : req.body.nome,
-      sobrenome : req.body.sobrenome,
-      municipio :  req.body.municipio,
-      estado :req.body.estado,
-      nascimento : req.body.nascimento,
-      idade : req.body.idade,
-      cpf : req.body.cpf,
-      email : req.body.email}) 
-    
-      
-});
-
-app.post("/loguin", (req, res) =>{
-  cadastro.create({
-    nome : req.body.nome,
-    senha : req.body.senha
-  })
-});
-
-
-
-app.listen(8000);
